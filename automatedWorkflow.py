@@ -8,7 +8,6 @@ R2 = "PDR3_S3_L001_R2_001.fastq.gz"
 
 
 #Finding the number of raw reads, total bp data, and average coverage 
-# conda activate does not currently work from this script, however, it works in the terminal
 subprocess.call(["conda", "init", "--all"])
 subprocess.call(["conda", "activate", "genomics"])
 numRawReads = subprocess.check_output(["zgrep", "-c", "@A01", "raw_reads/"+R1])
@@ -37,7 +36,6 @@ subprocess.call("spades.py -1 trimmed-reads/"+R1+" -2 trimmed-reads/"+R2+" -s tr
 numContigs = subprocess.check_output(["grep", "-c", ">", "spades_assembly_default/contigs.fasta"])
 numContigs = int(numContigs.strip())
 
-
 #Genome structure assessment with QUAST
 subprocess.call(["quast.py", "spades_assembly_default/contigs.fasta", "-o", "quast_results"])
 
@@ -63,17 +61,31 @@ subprocess.call("bwa index spades_assembly_default/contigs.fasta", shell=True)
 subprocess.call("bwa mem -t 24 spades_assembly_default/contigs.fasta trimmed-reads/" +R1+ " trimmed-reads/" +R2+ "  > raw_mapped.sam", shell=True)
 subprocess.call("samtools view -@ 24 -Sb raw_mapped.sam | samtools sort -@ 24 - sorted_mapped", shell=True)
 subprocess.call("samtools flagstat sorted_mapped.bam", shell=True)
+
+subprocess.call("samtools flagstat sorted_mapped.bam", shell=True)
 subprocess.call("samtools index sorted_mapped.bam", shell=True)
-subprocess.call("bedtools genomcov -ibam sorted_mapped.bam > coverage.out", shell=True)
-subprocess.call("gen_input_table.py --isbedfiles spades_assembly_default/contigs.
+subprocess.call("bedtools genomecov -ibam sorted_mapped.bam > coverage.out", shell=True)
+subprocess.call("gen_input_table.py --isbedfiles spades_assembly_default/contigs.fasta coverage.out > coverage_table.tsv", shell=True)
+
+
+# Non target contig removal
+subprocess.call("blobtools create -i spades_assembly_default/contigs.fasta -b sorted_mapped.bam -t contigs.fasta.vs.nt.cul5.1e5.megablast.out -o blob_out", shell=True)
+subprocess.call("blobtools view -i blob_out.blobDB.json -r all -o blob_taxonomy", shell=True)
+subprocess.call("blobtools plot -i blob_out.blobDB.json -r genus", shell=True)
+
+
+# Filter the genome assembly
+subprocess.call("mkdir filtered_assembly", shell=True)
+subprocess.call("cp blob_taxonomy.blob_out.blobDB.table.txt filtered_assembly", shell=True)
+subprocess.call("grep -v '#' blob_taxonomy.blob_out.blobDB.table.txt | awk -F '\t' '$2>500' | awk -F '\t' '$5 > 20' > filtered_assembly/list_of_contigs_to_keep_len500_cov20.txt", shell=True)
+subprocess.call("filter_contigs_by_list.py spades_assembly_default/contigs.fasta filtered_assembly/list_of_contigs_to_keep_len500_cov20.txt filtered_assembly/filtered.fasta", shell=True)
 
 
 # Report data
 endTime = time.time()
 elapsedTime = endTime - startTime
 print(" Raw Reads: " + str(numRawReads) + "\n Total BP data: " + str(totalbp) + "\n Average coverage: " + str(coverage) + "\n Contigs: " + str(numContigs) + "\n 16S: " + str(sixteenS) + "\n Run time: " + str(round(elapsedTime)) + " seconds") 
-
-
+                
 
                 
                 
